@@ -2,6 +2,10 @@ import os
 import sqlalchemy
 from google.cloud.sql.connector import Connector, IPTypes
 
+from dotenv import load_dotenv
+# Load environment variables from .env (only in local development)
+load_dotenv()
+
 # Get environment variables (set these in Cloud Run)
 INSTANCE_CONNECTION_NAME = os.getenv("INSTANCE_CONNECTION_NAME")  # e.g., project:region:instance
 DB_USER = os.getenv("DB_USER")  # e.g., myuser
@@ -17,7 +21,7 @@ def getconn():
         user=DB_USER,
         password=DB_PASS,
         database=DB_NAME,
-        ip_type=IPTypes.PRIVATE  # Use private IP for better security
+        # ip_type=IPTypes.PRIVATE  # Use private IP for better security
     )
 
 # Create SQLAlchemy engine

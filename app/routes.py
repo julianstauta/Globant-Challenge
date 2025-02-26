@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.database import engine
-from app.schemas import UploadDataSchema
+from app.schema import UploadDataSchema
 from app.crud import insert_hired_employees, insert_departments, insert_jobs
 
 router = APIRouter()

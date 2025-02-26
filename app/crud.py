@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 from app.models import HiredEmployee, Department, Job
-from app.schemas import HiredEmployeeSchema, DepartmentSchema, JobSchema
+from app.schema import HiredEmployeeSchema, DepartmentSchema, JobSchema
 
 def insert_hired_employees(db: Session, employees: list[HiredEmployeeSchema]):
     try:
