@@ -1,11 +1,14 @@
 # Use official Python base image
 FROM python:3.9
 
+# Copy the requirements t file
+COPY requirements.txt ./
+
 # Set working directory
 WORKDIR /app
 
 # Copy the application files
-COPY main.py requirements.txt ./
+COPY main.py ./
 
 # Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
