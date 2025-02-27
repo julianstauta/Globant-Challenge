@@ -1,72 +1,84 @@
 import os
-import pandas as pd
-import pyarrow as pa
-import pyarrow.avro as pavro
+import json
+import fastavro
 from google.cloud import storage
 from google.cloud.sql.connector import Connector
-from datetime import datetime
+import datetime
 
-# Environment Variables (Set in Cloud Run / Function)
-INSTANCE_CONNECTION_NAME = os.getenv("INSTANCE_CONNECTION_NAME")
-CLOUD_SQL_USER = os.getenv("DB_USER")
-CLOUD_SQL_PASSWORD = os.getenv("DB_PASS")
-CLOUD_SQL_DATABASE = os.getenv("DB_NAME")
-GCS_BUCKET = os.getenv("GCS_BUCKET")
+# Cloud Storage details
+BUCKET_NAME = os.getenv("GCS_BUCKET_NAME")
 
-# Initialize Storage Client
+# Cloud SQL connection details
+DB_USER = os.getenv("DB_USER")
+DB_PASS = os.getenv("DB_PASSWORD")
+DB_NAME = os.getenv("DB_NAME")
+INSTANCE_CONNECTION_NAME = os.getenv("INSTANCE_CONNECTION_NAME")  # e.g., "project-id:region:instance-id"
+
+# Google Cloud Storage client
 storage_client = storage.Client()
 
+# Initialize Cloud SQL Connector
+connector = Connector()
+
+def get_connection():
+    """Establishes a secure connection to Cloud SQL using the Cloud SQL Python Connector."""
+    return connector.connect(
+        INSTANCE_CONNECTION_NAME,
+        "pymysql",  # No need to import pymysql explicitly
+        user=DB_USER,
+        password=DB_PASS,
+        db=DB_NAME
+    )
+
 def backup_table_to_avro(table_name):
-    """Extracts table data from Cloud SQL and saves as AVRO in GCS."""
+    """Backs up a MySQL table from Cloud SQL to Avro format and uploads it to GCS."""
     try:
-        connector = Connector()
-        # Connect to Cloud SQL
-        conn = connector.connect(
-            INSTANCE_CONNECTION_NAME,
-            driver="pymysql",
-            user=CLOUD_SQL_USER,
-            password=CLOUD_SQL_PASSWORD,
-            database=CLOUD_SQL_DATABASE
-        )
-        cursor = conn.cursor()
+        conn = get_connection()
+        cursor = conn.cursor(dictionary=True)
 
         # Fetch table data
-        query = f"SELECT * FROM {table_name};"
-        cursor.execute(query)
+        cursor.execute(f"SELECT * FROM {table_name}")
         rows = cursor.fetchall()
-        col_names = [desc[0] for desc in cursor.description]
 
-        # Convert to Pandas DataFrame
-        df = pd.DataFrame(rows, columns=col_names)
+        if not rows:
+            print(f"No data found in table {table_name}. Skipping backup.")
+            return
 
-        # Convert DataFrame to Apache Arrow Table
-        table = pa.Table.from_pandas(df)
+        # Define Avro schema dynamically based on table structure
+        schema = {
+            "type": "record",
+            "name": table_name,
+            "fields": [{"name": col, "type": ["null", "string", "int", "float", "boolean"]} for col in rows[0].keys()]
+        }
 
-        # Define AVRO file path with timestamp
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        avro_filename = f"{table_name}_{timestamp}.avro"
-        local_path = f"/tmp/{avro_filename}"
+        # Generate timestamped filename
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        avro_filename = f"{table_name}_backup_{timestamp}.avro"
 
-        # Save as AVRO
-        with pa.OSFile(local_path, "wb") as f:
-            pavro.write_table(table, f)
+        # Write Avro file
+        with open(avro_filename, "wb") as avro_file:
+            fastavro.writer(avro_file, schema, rows)
+
+        print(f"Backup created: {avro_filename}")
 
         # Upload to GCS
-        bucket = storage_client.bucket(GCS_BUCKET)
-        blob = bucket.blob(f"backups/{avro_filename}")
-        blob.upload_from_filename(local_path)
+        upload_to_gcs(avro_filename, f"backup/{avro_filename}")
 
-        print(f"Backup completed: gs://{GCS_BUCKET}/backup/{avro_filename}")
+        # Clean up local file
+        os.remove(avro_filename)
 
     except Exception as e:
-        print(f"Error backing up {table_name}: {e}")
-
+        print(f"Error backing up table {table_name}: {e}")
     finally:
         cursor.close()
         conn.close()
 
-# Example usage
-if __name__ == "__main__":
-    tables = ["hired_employees", "departments", "jobs"]  # List of tables to back up
-    for table in tables:
-        backup_table_to_avro(table)
+def upload_to_gcs(source_file, destination_blob):
+    """Uploads a file to Google Cloud Storage."""
+    try:
+        bucket = storage_client.bucket(BUCKET_NAME)
+        blob = bucket.blob(destination_blob)
+        blob.upload_from_filename(source_file)
+        print(f"Uploaded {source_file} to gs://{BUCKET_NAME}/{destination_blob}")
+    except Exception as e:
+        print(f"Error uploading file to GCS: {e}")
