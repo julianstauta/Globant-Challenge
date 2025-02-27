@@ -3,7 +3,7 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.avro as pavro
 from google.cloud import storage
-import mysql.connector
+from google.cloud.sql.connector import Connector, IPTypes
 from datetime import datetime
 
 # Environment Variables (Set in Cloud Run / Function)
@@ -19,8 +19,9 @@ storage_client = storage.Client()
 def backup_table_to_avro(table_name):
     """Extracts table data from Cloud SQL and saves as AVRO in GCS."""
     try:
+        connector = Connector()
         # Connect to Cloud SQL
-        conn = mysql.connector.connect(
+        conn = connector.connect(
             INSTANCE_CONNECTION_NAME,
             driver="pymysql",
             user=CLOUD_SQL_USER,

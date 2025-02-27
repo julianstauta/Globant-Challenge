@@ -1,9 +1,8 @@
 # Google Cloud SDK libraries
 google-cloud-storage
-google-cloud-sqlconnector
 
 # MySQL connector
-mysql-connector-python
+cloud-sql-python-connector[pymysql]
 
 # Data handling
 pandas
