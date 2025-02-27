@@ -83,7 +83,7 @@ def upload_to_gcs(source_file, destination_blob):
     except Exception as e:
         print(f"Error uploading file to GCS: {e}")
 
-def backup_function():
+def backup_function(cloud_event):
     """Backs up the tables"""
     tablenames = ['departments', 'jobs', 'hired_employees']
     for table in tablenames:
