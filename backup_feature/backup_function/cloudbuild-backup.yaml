@@ -3,3 +3,6 @@ steps:
   args: ['functions', 'deploy', 'backup-function', '--runtime', 'python311',
          '--trigger-http', '--entry-point', 'backup_handler',
          '--source', 'backup_function/', '--region', 'us-central1']
+# Set Cloud Build to use the latest logs
+options:
+  logging: CLOUD_LOGGING_ONLY
