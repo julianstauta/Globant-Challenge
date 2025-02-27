@@ -1,8 +1,12 @@
 steps:
 - name: 'gcr.io/cloud-builders/gcloud'
-  args: ['functions', 'deploy', 'backup-function', '--runtime', 'python311',
-         '--trigger-http', '--entry-point', 'backup_handler',
-         '--source', 'backup_function/', '--region', 'us-central1']
+  args: ['functions', 'deploy', 'backup_function',
+    '--runtime=python311',
+    '--trigger-http', 
+    '--entry-point=backup_function',
+    '--source=.',
+    '--region=us-central1']
+
 # Set Cloud Build to use the latest logs
 options:
   logging: CLOUD_LOGGING_ONLY
