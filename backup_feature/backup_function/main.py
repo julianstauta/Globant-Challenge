@@ -84,6 +84,7 @@ def upload_to_gcs(source_file, destination_blob):
         print(f"Error uploading file to GCS: {e}")
 
 def backup_function():
+    """Backs up the tables"""
     tablenames = ['departments', 'jobs', 'hired_employees']
     for table in tablenames:
         backup_table_to_avro(table)
