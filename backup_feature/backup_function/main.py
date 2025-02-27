@@ -82,3 +82,8 @@ def upload_to_gcs(source_file, destination_blob):
         print(f"Uploaded {source_file} to gs://{BUCKET_NAME}/{destination_blob}")
     except Exception as e:
         print(f"Error uploading file to GCS: {e}")
+
+def backup_function():
+    tablenames = ['departments', 'jobs', 'hired_employees']
+    for table in tablenames:
+        backup_table_to_avro(table)
