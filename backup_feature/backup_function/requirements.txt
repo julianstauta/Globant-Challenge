@@ -6,4 +6,5 @@ cloud-sql-python-connector[pymysql]
 
 # Data handling
 pandas
+pyarrow
 fastavro

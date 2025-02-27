@@ -3,7 +3,7 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.avro as pavro
 from google.cloud import storage
-from google.cloud.sql.connector import Connector, IPTypes
+from google.cloud.sql.connector import Connector
 from datetime import datetime
 
 # Environment Variables (Set in Cloud Run / Function)
