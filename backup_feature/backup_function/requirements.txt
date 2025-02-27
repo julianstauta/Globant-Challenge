@@ -1,10 +1,10 @@
 # Google Cloud SDK libraries
-google-cloud-storage==2.16.0
-google-cloud-sqlconnector==1.6.0
+google-cloud-storage
+google-cloud-sqlconnector
 
 # MySQL connector
-mysql-connector-python==8.3.0
+mysql-connector-python
 
 # Data handling
-pandas==2.2.1
-fastavro==1.9.4
+pandas
+fastavro
