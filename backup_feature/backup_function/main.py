@@ -7,10 +7,10 @@ import mysql.connector
 from datetime import datetime
 
 # Environment Variables (Set in Cloud Run / Function)
-CLOUD_SQL_HOST = os.getenv("CLOUD_SQL_HOST")
-CLOUD_SQL_USER = os.getenv("CLOUD_SQL_USER")
-CLOUD_SQL_PASSWORD = os.getenv("CLOUD_SQL_PASSWORD")
-CLOUD_SQL_DATABASE = os.getenv("CLOUD_SQL_DATABASE")
+INSTANCE_CONNECTION_NAME = os.getenv("INSTANCE_CONNECTION_NAME")
+CLOUD_SQL_USER = os.getenv("DB_USER")
+CLOUD_SQL_PASSWORD = os.getenv("DB_PASS")
+CLOUD_SQL_DATABASE = os.getenv("DB_NAME")
 GCS_BUCKET = os.getenv("GCS_BUCKET")
 
 # Initialize Storage Client
@@ -21,7 +21,8 @@ def backup_table_to_avro(table_name):
     try:
         # Connect to Cloud SQL
         conn = mysql.connector.connect(
-            host=CLOUD_SQL_HOST,
+            INSTANCE_CONNECTION_NAME,
+            driver="pymysql",
             user=CLOUD_SQL_USER,
             password=CLOUD_SQL_PASSWORD,
             database=CLOUD_SQL_DATABASE
@@ -54,7 +55,7 @@ def backup_table_to_avro(table_name):
         blob = bucket.blob(f"backups/{avro_filename}")
         blob.upload_from_filename(local_path)
 
-        print(f"Backup completed: gs://{GCS_BUCKET}/backups/{avro_filename}")
+        print(f"Backup completed: gs://{GCS_BUCKET}/backup/{avro_filename}")
 
     except Exception as e:
         print(f"Error backing up {table_name}: {e}")
