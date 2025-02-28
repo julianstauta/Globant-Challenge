@@ -121,7 +121,7 @@ def restore_table_from_avro(bucket_name, file_name, table_name):
 
 
 @functions_framework.http
-def restore_http_trigger(request):
+def restore_function(request):
     """Cloud Function Triggered via HTTP to restore a table from a backup file."""
     request_json = request.get_json(silent=True)
     
