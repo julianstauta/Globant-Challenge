@@ -1,0 +1,9 @@
+# Google Cloud SDK libraries
+google-cloud-storage
+
+# MySQL connector
+cloud-sql-python-connector[pymysql]
+
+# Data handling
+pandas
+fastavro
