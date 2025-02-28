@@ -1,19 +1,17 @@
 import functions_framework
 import fastavro
-import pymysql
 from google.cloud.sql.connector import Connector
 from google.cloud import storage
 import os
 import tempfile
-import json
 import datetime
 
 # Cloud SQL Config
 DB_USER = os.getenv("DB_USER")
-DB_PASSWORD = os.getenv("DB_PASSWORD")
+DB_PASS = os.getenv("DB_PASS")
 DB_NAME = os.getenv("DB_NAME")
 INSTANCE_CONNECTION_NAME = os.getenv("INSTANCE_CONNECTION_NAME")
-GCS_BUCKET = os.getenv("GCS_BUCKET")  # Storage bucket where backups are stored
+BUCKET_NAME = os.getenv("GCS_BUCKET_NAME")  # Storage bucket where backups are stored
 
 # GCS Client
 storage_client = storage.Client()
@@ -26,20 +24,19 @@ def get_db_connection():
         INSTANCE_CONNECTION_NAME,
         "pymysql",
         user=DB_USER,
-        password=DB_PASSWORD,
+        password=DB_PASS,
         db=DB_NAME
     )
     return conn
 
-
 def get_latest_backup_file(bucket_name, table_name):
     """Finds the latest Avro backup file for the given table in GCS."""
     bucket = storage_client.bucket(bucket_name)
-    blobs = list(bucket.list_blobs(prefix=f"backup_{table_name}_"))
+    blobs = list(bucket.list_blobs(prefix=f"backup/{table_name}_backup_"))
 
     # Extract timestamps and sort files by newest
     avro_files = [
-        (blob.name, datetime.datetime.strptime(blob.name.split("_")[-1].replace(".avro", ""), "%Y%m%d_%H%M%S"))
+        (blob.name, datetime.datetime.strptime("_".join(blob.name.split("_")[-2:]).replace(".avro", ""), "%Y%m%d_%H%M%S"))
         for blob in blobs
         if blob.name.endswith(".avro")
     ]
@@ -49,6 +46,7 @@ def get_latest_backup_file(bucket_name, table_name):
 
     # Get latest file
     latest_file = max(avro_files, key=lambda x: x[1])[0]
+    latest_file = latest_file.replace('backup/', '')
     print(f"Using latest backup file: {latest_file}")
     return latest_file
 
@@ -68,7 +66,6 @@ def convert_avro_data(record, schema):
 
     return record
 
-
 def restore_table_from_avro(bucket_name, file_name, table_name):
     """Restores a Cloud SQL table from an Avro backup file stored in GCS."""
     try:
@@ -76,7 +73,7 @@ def restore_table_from_avro(bucket_name, file_name, table_name):
 
         # Download Avro file
         bucket = storage_client.bucket(bucket_name)
-        blob = bucket.blob(file_name)
+        blob = bucket.blob(f"backup/{file_name}")
 
         with tempfile.NamedTemporaryFile(delete=False) as temp_file:
             blob.download_to_filename(temp_file.name)
@@ -130,12 +127,12 @@ def restore_function(request):
 
     table_name = request_json["table_name"]
     backup_file = request_json.get("backupfile")
-
-    if not backup_file:
+    
+    if not backup_file or backup_file == "":
         try:
-            backup_file = get_latest_backup_file(GCS_BUCKET, table_name)
+            backup_file = get_latest_backup_file(BUCKET_NAME, table_name)
         except FileNotFoundError as e:
             return {"status": "error", "message": str(e)}, 404
 
-    result = restore_table_from_avro(GCS_BUCKET, backup_file, table_name)
+    result = restore_table_from_avro(BUCKET_NAME, backup_file, table_name)
     return result, 200 if result["status"] == "success" else 500
