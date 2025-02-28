@@ -1,0 +1,12 @@
+steps:
+- name: 'gcr.io/cloud-builders/gcloud'
+  args: ['functions', 'deploy', 'restore_function',
+    '--runtime=python311',
+    '--trigger-http', 
+    '--entry-point=restore_function',
+    '--source=backup_feature/restore_function/',
+    '--region=us-central1']
+
+# Set Cloud Build to use the latest logs
+options:
+  logging: CLOUD_LOGGING_ONLY
