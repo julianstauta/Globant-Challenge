@@ -13,6 +13,30 @@ DB_NAME = os.getenv("DB_NAME")
 INSTANCE_CONNECTION_NAME = os.getenv("INSTANCE_CONNECTION_NAME")
 BUCKET_NAME = os.getenv("GCS_BUCKET_NAME")  # Storage bucket where backups are stored
 
+TABLE_SCHEMAS = {
+    "hired_employees": """
+        CREATE TABLE hired_employees (
+            id SERIAL PRIMARY KEY,
+            name VARCHAR(255),
+            datetime TIMESTAMP NOT NULL,
+            department_id INTEGER REFERENCES departments(id),
+            job_id INTEGER REFERENCES jobs(id)
+        );
+    """,
+    "departments": """
+        CREATE TABLE departments (
+            id SERIAL PRIMARY KEY,
+            department VARCHAR(255) UNIQUE NOT NULL
+        );
+    """,
+    "jobs": """
+        CREATE TABLE jobs (
+            id SERIAL PRIMARY KEY,
+            job VARCHAR(255) UNIQUE NOT NULL
+        );
+    """
+}
+
 # GCS Client
 storage_client = storage.Client()
 
@@ -62,9 +86,18 @@ def convert_avro_data(record, schema):
             timestamp_micros = record.get(field_name)
             if timestamp_micros is not None:
                 # Convert microseconds to datetime.date
-                record[field_name] = datetime.datetime.utcfromtimestamp(timestamp_micros / 1_000_000).date()
+                record[field_name] = datetime.datetime.fromtimestamp(timestamp_micros / 1_000_000).date()
 
     return record
+
+def drop_and_recreate_table(connection, table_name):
+    """Drops and recreates a table before restoring data."""
+    with connection.cursor() as cursor:
+        print(f"Dropping table {table_name} if exists...")
+        cursor.execute(f"DROP TABLE IF EXISTS {table_name};")
+        print(f"Recreating table {table_name}...")
+        cursor.execute(TABLE_SCHEMAS[table_name])
+    connection.commit()
 
 def restore_table_from_avro(bucket_name, file_name, table_name):
     """Restores a Cloud SQL table from an Avro backup file stored in GCS."""
@@ -93,6 +126,8 @@ def restore_table_from_avro(bucket_name, file_name, table_name):
         # Insert data into Cloud SQL
         conn = get_db_connection()
         cursor = conn.cursor()
+
+        drop_and_recreate_table(conn, table_name)
 
         insert_query = f"INSERT INTO {table_name} ({column_names}) VALUES ({placeholders})"
         batch_size = 1000
