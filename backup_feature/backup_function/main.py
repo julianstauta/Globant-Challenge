@@ -1,128 +1,138 @@
 import functions_framework
-import os
-import json
 import fastavro
-from google.cloud import storage
 from google.cloud.sql.connector import Connector
+from google.cloud import storage
+import os
+import tempfile
 import datetime
 
-# Cloud Storage details
-BUCKET_NAME = os.getenv("GCS_BUCKET_NAME")
-
-# Cloud SQL connection details
+# Cloud SQL Config
 DB_USER = os.getenv("DB_USER")
 DB_PASS = os.getenv("DB_PASS")
 DB_NAME = os.getenv("DB_NAME")
-INSTANCE_CONNECTION_NAME = os.getenv("INSTANCE_CONNECTION_NAME")  # e.g., "project-id:region:instance-id"
+INSTANCE_CONNECTION_NAME = os.getenv("INSTANCE_CONNECTION_NAME")
+BUCKET_NAME = os.getenv("GCS_BUCKET_NAME")  # Storage bucket where backups are stored
 
-# Google Cloud Storage client
+# GCS Client
 storage_client = storage.Client()
 
 
-def get_connection():
-    # Initialize Cloud SQL Connector
+def get_db_connection():
+    """Creates a secure connection to Cloud SQL."""
     connector = Connector()
-    """Establishes a secure connection to Cloud SQL using the Cloud SQL Python Connector."""
-    return connector.connect(
+    conn = connector.connect(
         INSTANCE_CONNECTION_NAME,
-        "pymysql",  # No need to import pymysql explicitly
+        "pymysql",
         user=DB_USER,
         password=DB_PASS,
         db=DB_NAME
     )
+    return conn
 
-def generate_avro_schema(table_name, column_names, types):
-    """Generate Avro schema dynamically based on table structure"""
+def get_latest_backup_file(bucket_name, table_name):
+    """Finds the latest Avro backup file for the given table in GCS."""
+    bucket = storage_client.bucket(bucket_name)
+    blobs = list(bucket.list_blobs(prefix=f"backup/{table_name}_backup_"))
 
-    avro_type_map = {
-        "int": "int",
-        "float": "float",
-        "bool": "boolean",
-        "str": "string",
-        "bytes": "bytes",
-    }
+    # Extract timestamps and sort files by newest
+    avro_files = [
+        (blob.name, datetime.datetime.strptime("_".join(blob.name.split("_")[-2:]).replace(".avro", ""), "%Y%m%d_%H%M%S"))
+        for blob in blobs
+        if blob.name.endswith(".avro")
+    ]
 
-    # Generate schema fields
-    fields = []
-    for i in range(len(column_names)):
-        avro_type = avro_type_map.get(types[i], types[i])
-       
-        # Handle datetime columns explicitly
-        if "date" in types[i].lower() or "time" in types[i].lower():
-            avro_type = {
-                "type": "long",
-                "logicalType": "timestamp-micros"
-            }
-        
-        fields.append({"name": column_names[i], "type": ["null", avro_type], "default": None})
+    if not avro_files:
+        raise FileNotFoundError(f"No backup files found for table {table_name}")
 
-    # Return Avro schema
-    return {
-        "type": "record",
-        "name": table_name,
-        "fields": fields
-    }
+    # Get latest file
+    latest_file = max(avro_files, key=lambda x: x[1])[0]
+    latest_file = latest_file.replace('backup/', '')
+    print(f"Using latest backup file: {latest_file}")
+    return latest_file
 
-def backup_table_to_avro(table_name):
-    """Backs up a MySQL table from Cloud SQL to Avro format and uploads it to GCS."""
+
+def convert_avro_data(record, schema):
+    """Converts Avro timestamps (timestamp-micros) to Python date objects."""
+    for field in schema["fields"]:
+        field_name = field["name"]
+        field_type = field["type"]
+
+        # Check if it's a timestamp field
+        if isinstance(field_type, dict) and field_type.get("logicalType") == "timestamp-micros":
+            timestamp_micros = record.get(field_name)
+            if timestamp_micros is not None:
+                # Convert microseconds to datetime.date
+                record[field_name] = datetime.datetime.utcfromtimestamp(timestamp_micros / 1_000_000).date()
+
+    return record
+
+def restore_table_from_avro(bucket_name, file_name, table_name):
+    """Restores a Cloud SQL table from an Avro backup file stored in GCS."""
     try:
-        conn = get_connection()
+        print(f"Starting restore for table {table_name} from file {file_name}")
+
+        # Download Avro file
+        bucket = storage_client.bucket(bucket_name)
+        blob = bucket.blob(f"backup/{file_name}")
+
+        with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+            blob.download_to_filename(temp_file.name)
+            avro_path = temp_file.name
+
+        # Read Avro file
+        with open(avro_path, "rb") as avro_file:
+            reader = fastavro.reader(avro_file)
+            schema = reader.writer_schema
+            records = [convert_avro_data(record, schema) for record in reader]  # Convert timestamps
+
+        # Extract column names from schema
+        columns = [field["name"] for field in schema["fields"]]
+        placeholders = ", ".join(["%s"] * len(columns))
+        column_names = ", ".join(columns)
+
+        # Insert data into Cloud SQL
+        conn = get_db_connection()
         cursor = conn.cursor()
-        # Fetch table data
-        cursor.execute(f"SELECT * FROM {table_name}")
-        rows = cursor.fetchall()
-        if not rows:
-            print(f"No data found in table {table_name}. Skipping backup.")
-            return
 
-        column_names = [desc[0] for desc in cursor.description]
+        insert_query = f"INSERT INTO {table_name} ({column_names}) VALUES ({placeholders})"
+        batch_size = 1000
 
-        types = [type(item).__name__ for item in rows[0]]
-        
+        # Insert in batches
+        for i in range(0, len(records), batch_size):
+            batch = records[i : i + batch_size]
+            values = [tuple(record.get(col, None) for col in columns) for record in batch]
+            cursor.executemany(insert_query, values)
+            conn.commit()
 
-        # Define Avro schema dynamically based on column names
-        schema = generate_avro_schema(table_name, column_names, types)
+        print(f"Successfully restored {len(records)} rows into {table_name}")
 
-        # Generate timestamped filename
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        avro_filename = f"{table_name}_backup_{timestamp}.avro"
-
-        # Convert rows (tuples) into a list of dictionaries
-        records = [dict(zip(column_names, row)) for row in rows]
-
-        # Write to Avro
-        with open(avro_filename, "wb") as avro_file:
-            fastavro.writer(avro_file, schema, records) 
-
-        print(f"Backup created: {avro_filename}")
-
-        # Upload to GCS
-        upload_to_gcs(avro_filename, f"backup/{avro_filename}")
-
-        # Clean up local file
-        os.remove(avro_filename)
+        return {"status": "success", "message": f"Restored {len(records)} rows into {table_name}"}
 
     except Exception as e:
-        print(f"Error backing up table {table_name}: {e}")
+        print(f"Error restoring {file_name}: {e}")
+        return {"status": "error", "message": str(e)}
+
     finally:
         cursor.close()
         conn.close()
 
-def upload_to_gcs(source_file, destination_blob):
-    """Uploads a file to Google Cloud Storage."""
-    try:
-        bucket = storage_client.bucket(BUCKET_NAME)
-        blob = bucket.blob(destination_blob)
-        blob.upload_from_filename(source_file)
-        print(f"Uploaded {source_file} to gs://{BUCKET_NAME}/{destination_blob}")
-    except Exception as e:
-        print(f"Error uploading file to GCS: {e}")
 
 @functions_framework.http
-def backup_function(response):
-    """Backs up the tables"""
-    tablenames = ['departments', 'jobs', 'hired_employees']
-    for table in tablenames:
-        print(f"Backup for table {table}")
-        backup_table_to_avro(table)
-    return {"message": "Tables backed up successfully"}
+def restore_function(request):
+    """Cloud Function Triggered via HTTP to restore a table from a backup file."""
+    request_json = request.get_json(silent=True)
+    
+    if not request_json or "table_name" not in request_json:
+        return {"status": "error", "message": "Missing required parameter 'table_name'"}, 400
+
+    table_name = request_json["table_name"]
+    backup_file = request_json.get("backupfile")
+    
+    if not backup_file or backup_file == "":
+        try:
+            backup_file = get_latest_backup_file(BUCKET_NAME, table_name)
+        except FileNotFoundError as e:
+            return {"status": "error", "message": str(e)}, 404
+
+    result = restore_table_from_avro(BUCKET_NAME, backup_file, table_name)
+    return result, 200 if result["status"] == "success" else 500
