@@ -1,9 +1,4 @@
 import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-from google.cloud.sql.connector import Connector
-from itables import init_notebook_mode
-import json
 
 # Cloud SQL Connection Config
 INSTANCE_CONNECTION_NAME = "hopeful-canto-452115-s3:us-central1:employee-db"
