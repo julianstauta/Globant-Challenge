@@ -25,7 +25,7 @@ async def upload_data(data: UploadDataSchema):
         db.close()
 
 @router.get("/get-hired-by-quarter")
-async def get_hired_by_quarter(data: UploadDataSchema):
+async def get_hired_by_quarter():
     db = Session(engine)
     try:
         return get_hired_employees_quarter()
