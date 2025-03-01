@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from app.database import engine
 from app.schema import UploadDataSchema
 from app.crud import insert_hired_employees, insert_departments, insert_jobs
+from app.analytics import get_hired_employees_quarter
 
 router = APIRouter()
 
@@ -17,6 +18,17 @@ async def upload_data(data: UploadDataSchema):
         if data.jobs:
             insert_jobs(db, data.jobs)
         return {"message": "Data uploaded successfully"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        db.close()
+
+@router.get("/get-hired-by-quarter")
+async def get_hired_by_quarter(data: UploadDataSchema):
+    db = Session(engine)
+    try:
+        return get_hired_employees_quarter()
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
