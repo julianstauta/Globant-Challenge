@@ -20,6 +20,27 @@ query1 = """
     ORDER BY d.department, j.job, quarter;
 """
 
+# Query 2: Departments that hired more than the mean number of employees in 2021
+query2 = """
+    WITH department_hires AS (
+        SELECT 
+            he.department_id, 
+            d.department, 
+            COUNT(*) AS num_hired
+        FROM hired_employees he
+        JOIN departments d ON he.department_id = d.id
+        WHERE EXTRACT(YEAR FROM he.datetime) = 2021
+        GROUP BY he.department_id, d.department
+    )
+    SELECT 
+        department_id, 
+        department, 
+        num_hired
+    FROM department_hires
+    WHERE num_hired > (SELECT AVG(num_hired) FROM department_hires)
+    ORDER BY num_hired DESC;
+"""
+
 def get_hired_employees_quarter(db):
     
     with db as conn:
@@ -37,4 +58,12 @@ def get_hired_employees_quarter(db):
     df_pivot.columns = [f"Q{int(col)}" for col in df_pivot.columns]
     df_pivot.reset_index(inplace=True)
     json_string = df_pivot.to_json(orient="records")
+    return json_string
+
+def get_query2(db):
+
+    with db as conn:
+        df1 = pd.read_sql(query1, conn)
+    
+    json_string = df1.to_json(orient="records")
     return json_string

@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from app.database import engine, getconn
 from app.schema import UploadDataSchema
 from app.crud import insert_hired_employees, insert_departments, insert_jobs
-from app.analytics import get_hired_employees_quarter
+from app.analytics import get_hired_employees_quarter, get_query2
 
 router = APIRouter()
 
@@ -29,5 +29,13 @@ async def get_hired_by_quarter():
     db = getconn()
     try:
         return get_hired_employees_quarter(db)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+@router.get("/get-query-2")
+async def get_hired_by_quarter():
+    db = getconn()
+    try:
+        return get_query2(db)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
