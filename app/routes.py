@@ -26,11 +26,9 @@ async def upload_data(data: UploadDataSchema):
 
 @router.get("/get-hired-by-quarter")
 async def get_hired_by_quarter():
-    db = getconn()
+    db = getconn
     try:
         return get_hired_employees_quarter(db)
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        db.close()
