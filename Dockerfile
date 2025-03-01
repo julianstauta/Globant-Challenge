@@ -11,7 +11,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the entire application source code
-COPY . .
+COPY app/ ./app/
 
 # Expose the FastAPI default port
 EXPOSE 8080

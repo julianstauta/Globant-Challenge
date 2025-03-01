@@ -63,7 +63,7 @@ def get_hired_employees_quarter(db):
 def get_query2(db):
 
     with db as conn:
-        df1 = pd.read_sql(query1, conn)
+        df1 = pd.read_sql(query2, conn)
     
     json_string = df1.to_json(orient="records")
     return json_string
