@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from app.database import engine
+from app.database import engine, getconn
 from app.schema import UploadDataSchema
 from app.crud import insert_hired_employees, insert_departments, insert_jobs
 from app.analytics import get_hired_employees_quarter
@@ -26,7 +26,7 @@ async def upload_data(data: UploadDataSchema):
 
 @router.get("/get-hired-by-quarter")
 async def get_hired_by_quarter():
-    db = Session(engine)
+    db = getconn()
     try:
         return get_hired_employees_quarter(db)
     except Exception as e:
